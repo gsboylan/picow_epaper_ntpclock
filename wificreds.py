@@ -1,0 +1,2 @@
+SSID = "yourssid"
+PASS = "yourpass"
