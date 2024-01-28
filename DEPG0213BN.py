@@ -221,7 +221,7 @@ class EPD(framebuf.FrameBuffer):
 
 
 
-    def update_comon(self):
+    def _update_common(self):
 
 #  this->command(0x12);
 #  this->wait_until_idle_();
@@ -256,7 +256,7 @@ class EPD(framebuf.FrameBuffer):
         self._command(b'\x4f', b'\x00\x00')
 
     def update(self):
-        self.update_comon()
+        self._update_common()
 
 #    // send data
 #    this->command(0x24);
@@ -272,7 +272,7 @@ class EPD(framebuf.FrameBuffer):
         self._wait_until_idle()
 
     def update_partial(self):
-        self.update_comon()
+        self._update_common()
 
 #https://github.com/lewisxhe/GxEPD/blob/master/src/GxDEPG0213BN/GxDEPG0213BN.cpp
 
