@@ -7,7 +7,6 @@ EPD_WIDTH = const(128)
 EPD_HEIGHT = const(250)
 
 # Display commands
-# --------
 DRIVER_OUTPUT_CONTROL = b'\x01'
 GATE_DRIVING_VOLTAGE_CONTROL = b'\x03'
 SOURCE_DRIVING_VOLTAGE_CONTROL = b'\x04'
@@ -30,7 +29,7 @@ SET_RAM_Y_ADDRESS_COUNTER = b'\x4F'
 SET_ANALOG_BLOCK_CONTROL = b'\x74'
 SET_DIGITAL_BLOCK_CONTROL = b'\x7E'
 NOP_FRAME_TERMINATOR = b'\x7F'
-TERMINATE_FRAME_READ_WRITE = b'\xFF'  # not in datasheet, aka NOOP
+TERMINATE_FRAME_READ_WRITE = b'\xFF'  # NOP, terminate frame
 
 # Rotaion
 ROTATION_0 = const(0)
@@ -146,14 +145,10 @@ class EPD(framebuf.FrameBuffer):
         # Set the Y address counter to 0x000 (POR)
         self._command(SET_RAM_Y_ADDRESS_COUNTER, b'\x00\x00')
 
-        # Set border to 0xff ()
-        # self._command(BORDER_WAVEFORM_CONTROL, b'\xff')
-
     def update(self):
         self._update_common()
 
         self._command(WRITE_RAM, self._get_rotated_buffer())
-
         self._command(MASTER_ACTIVATION)
         self._wait_until_idle()
 
@@ -172,7 +167,6 @@ class EPD(framebuf.FrameBuffer):
         self._command(SOURCE_DRIVING_VOLTAGE_CONTROL, b'\x41\x00\x32')  # POR is b'\x41\xA8\x32'
 
         # POR is 0x00
-        # 0x32 is an unlisted value?
         self._command(WRITE_VCOM_REGISTER, b'\x00')
         self._wait_until_idle()
 
@@ -188,20 +182,16 @@ class EPD(framebuf.FrameBuffer):
         self._wait_until_idle()
 
         self._command(WRITE_RAM, self._get_rotated_buffer())
-
-        # commit as partial
+        # here use 0xCF: enable clock, enable analog, display in mode 2, disable analog, osc off
         self._command(DISPLAY_UPDATE_CONTROL_2, b'\xCF')
         self._command(MASTER_ACTIVATION)
         self._wait_until_idle()
 
-        # data must be sent again on partial update
-        # self._command(WRITE_RAM)
-        # sleep_ms(300)
-        # self._command(WRITE_RAM, self._get_rotated_buffer())
-        # sleep_ms(300)
-        # self._command(DISPLAY_UPDATE_CONTROL_2, b'\xCF')
-        # self._command(MASTER_ACTIVATION)
-        # self._wait_until_idle()
+        # partial update leaves artifacts, draw again for a better image
+        self._command(WRITE_RAM, self._get_rotated_buffer())
+        self._command(DISPLAY_UPDATE_CONTROL_2, b'\xCF')
+        self._command(MASTER_ACTIVATION)
+        self._wait_until_idle()
 
     def _get_rotated_buffer(self):
         # no need to rotate
