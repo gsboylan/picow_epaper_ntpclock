@@ -1,14 +1,13 @@
-from micropython import const
 from time import sleep_ms
-from machine import RTC, SPI, Pin
 
-from wifi import Wifi
-import wificreds
 import ntptime
+from machine import RTC
 
-from writer import Writer
 import monaspace_neon_medium
+import wificreds
 from display import LandscapeDisplay
+from wifi import Wifi
+from writer import Writer
 
 
 def run():
@@ -40,13 +39,28 @@ def run():
     rtc = RTC()
     print(f"Time is: {rtc.datetime()}")
 
-    textwriter = Writer(epd, monaspace_neon_medium,
-                        invert_mono=True,  # display black on white epaper
-                        verbose=True)
+    textwriter = Writer(
+        epd,
+        monaspace_neon_medium,
+        invert_mono=True,  # display black on white epaper
+        verbose=True,
+    )
     textwriter.set_clip(col_clip=True)
 
-    Writer.set_textpos(epd, textwriter.screenheight//2 - textwriter.height//2, textwriter.screenwidth//2 - textwriter.stringlen("00:00")//2)
-    now = rtc.datetime()
-    textwriter.printstring(f"{now[4] - 5:02d}:{now[5]:02d}")
+    text_row = textwriter.screenheight // 2 - textwriter.height // 2
+    text_col = textwriter.screenwidth // 2 - textwriter.stringlen("00:00") // 2
 
-    epd.update()
+    def move_to_clock_position():
+        Writer.set_textpos(device=epd, row=text_row, col=text_col)
+
+    now = rtc.datetime()
+
+    move_to_clock_position()
+    textwriter.printstring(f"{now[4] - 5:02d}:{now[5]:02d}")
+    epd.update_partial()
+    epd.deep_sleep()
+    sleep_ms(5000)
+    move_to_clock_position()
+    textwriter.printstring(f"{now[4]:02d}:{now[5]:02d}")
+    epd.update_partial()
+    epd.deep_sleep()

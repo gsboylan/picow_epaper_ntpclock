@@ -6,10 +6,31 @@ import framebuf
 EPD_WIDTH = const(128)
 EPD_HEIGHT = const(250)
 
-# Some command OP-Codes
-WRITE_RAM = b'\x24'
-DISPLAY_UPDATE_CONTROL_1 = b'\x21'
+# Display commands
+# --------
+DRIVER_OUTPUT_CONTROL = b'\x01'
+GATE_DRIVING_VOLTAGE_CONTROL = b'\x03'
+SOURCE_DRIVING_VOLTAGE_CONTROL = b'\x04'
+BOOSTER_SOFT_START_CONTROL = b'\x0C'
+DEEP_SLEEP_MODE = b'\x10'
+DATA_ENTRY_MODE_SETTING = b'\x11'
+SW_RESET = b'\x12'
+MASTER_ACTIVATION = b'\x20'
+DISPLAY_UPDATE_CONTROL_1 = b'\x21'  # 0x0 normal (POR), 0x4 bypass content as 0, 0x8 invert content
 DISPLAY_UPDATE_CONTROL_2 = b'\x22'
+WRITE_RAM = b'\x24'
+WRITE_VCOM_REGISTER = b'\x2C'
+WRITE_LUT_REGISTER = b'\x32'
+SET_GATE_TIME = b'\x3B'
+BORDER_WAVEFORM_CONTROL = b'\x3C'
+SET_RAM_X_ADDRESS_START_END_POSITION = b'\x44'
+SET_RAM_Y_ADDRESS_START_END_POSITION = b'\x45'
+SET_RAM_X_ADDRESS_COUNTER = b'\x4E'
+SET_RAM_Y_ADDRESS_COUNTER = b'\x4F'
+SET_ANALOG_BLOCK_CONTROL = b'\x74'
+SET_DIGITAL_BLOCK_CONTROL = b'\x7E'
+NOP_FRAME_TERMINATOR = b'\x7F'
+TERMINATE_FRAME_READ_WRITE = b'\xFF'  # not in datasheet, aka NOOP
 
 # Rotaion
 ROTATION_0 = const(0)
@@ -37,6 +58,9 @@ class EPD(framebuf.FrameBuffer):
         self.init_spi(spi, cs, dc, rst, busy)
         self.init_buffer(rotation)
 
+        self.hard_reset()
+        self.soft_reset()
+
     def init_buffer(self, rotation):
         self._rotation = rotation
         size = EPD_WIDTH * EPD_HEIGHT // 8
@@ -56,7 +80,6 @@ class EPD(framebuf.FrameBuffer):
                          self.height,
                          framebuf.MONO_HLSB if self._rotation == ROTATION_0 or self._rotation == ROTATION_180
                          else framebuf.MONO_VLSB)
-        self.hard_reset()
 
     def init_spi(self, spi, cs, dc, rst, busy):
         self.spi = spi
@@ -92,278 +115,94 @@ class EPD(framebuf.FrameBuffer):
 
     def hard_reset(self):
         self.rst(1)
-        sleep_ms(1)
+        sleep_ms(10)
         self.rst(0)
         sleep_ms(10)
         self.rst(1)
 
-
-# void GxDEPG0213BN::_SetRamArea(uint8_t Xstart, uint8_t Xend, uint8_t Ystart, uint8_t Ystart1, uint8_t Yend, uint8_t Yend1)
-# {
-#     _writeCommand(0x44);
-#     _writeData(Xstart + 1);
-#     _writeData(Xend + 1);
-#     _writeCommand(0x45);
-#     _writeData(Ystart);
-#     _writeData(Ystart1);
-#     _writeData(Yend);
-#     _writeData(Yend1);
-# }
-#
-# void GxDEPG0213BN::_SetRamPointer(uint8_t addrX, uint8_t addrY, uint8_t addrY1)
-# {
-#     _writeCommand(0x4e);
-#     _writeData(addrX + 1);
-#     _writeCommand(0x4f);
-#     _writeData(addrY);
-#     _writeData(addrY1);
-# }
-
-# void GxDEPG0213BN::_writeToWindow(uint16_t xs, uint16_t ys, uint16_t xd, uint16_t yd, uint16_t w, uint16_t h)
-# {
-#     //Serial.printf("_writeToWindow(%d, %d, %d, %d, %d, %d)\n", xs, ys, xd, yd, w, h);
-#     // the screen limits are the hard limits
-#     if (xs >= GxDEPG0213BN_WIDTH) return;
-#     if (ys >= GxDEPG0213BN_HEIGHT) return;
-#     if (xd >= GxDEPG0213BN_WIDTH) return;
-#     if (yd >= GxDEPG0213BN_HEIGHT) return;
-#     w = gx_uint16_min(w, GxDEPG0213BN_WIDTH - xs);
-#     w = gx_uint16_min(w, GxDEPG0213BN_WIDTH - xd);
-#     h = gx_uint16_min(h, GxDEPG0213BN_HEIGHT - ys);
-#     h = gx_uint16_min(h, GxDEPG0213BN_HEIGHT - yd);
-#     uint16_t xds_d8 = xd / 8;
-#     uint16_t xde_d8 = (xd + w - 1) / 8;
-#     uint16_t yde = yd + h - 1;
-#     // soft limits, must send as many bytes as set by _SetRamArea
-#     uint16_t xse_d8 = xs / 8 + xde_d8 - xds_d8;
-#     uint16_t yse = ys + h - 1;
-#     _SetRamArea(xds_d8, xde_d8, yd % 256, yd / 256, yde % 256, yde / 256); // X-source area,Y-gate area
-#     _SetRamPointer(xds_d8, yd % 256, yd / 256); // set ram
-#     _waitWhileBusy(0, 100); // needed ?
-#     _writeCommand(0x24);
-#     for (int16_t y1 = ys; y1 <= yse; y1++) {
-#         for (int16_t x1 = xs / 8; x1 <= xse_d8; x1++) {
-#             uint16_t idx = y1 * (GxDEPG0213BN_WIDTH / 8) + x1;
-#             uint8_t data = (idx < sizeof(_buffer)) ? _buffer[idx] : 0x00;
-#             _writeData(~data);
-#         }
-#     }
-# }
-#
-# void GxDEPG0213BN::updateToWindow(uint16_t xs, uint16_t ys, uint16_t xd, uint16_t yd, uint16_t w, uint16_t h, bool using_rotation)
-# {
-#     if (using_rotation) {
-#         switch (getRotation()) {
-#         case 1:
-#             swap(xs, ys);
-#             swap(xd, yd);
-#             swap(w, h);
-#             xs = GxDEPG0213BN_WIDTH - xs - w - 1;
-#             xd = GxDEPG0213BN_WIDTH - xd - w - 1;
-#             break;
-#         case 2:
-#             xs = GxDEPG0213BN_WIDTH - xs - w - 1;
-#             ys = GxDEPG0213BN_HEIGHT - ys - h - 1;
-#             xd = GxDEPG0213BN_WIDTH - xd - w - 1;
-#             yd = GxDEPG0213BN_HEIGHT - yd - h - 1;
-#             break;
-#         case 3:
-#             swap(xs, ys);
-#             swap(xd, yd);
-#             swap(w, h);
-#             ys = GxDEPG0213BN_HEIGHT - ys  - h - 1;
-#             yd = GxDEPG0213BN_HEIGHT - yd  - h - 1;
-#             break;
-#         }
-#     }
-#     _Init_Part(0x03);
-#     _writeToWindow(xs, ys, xd, yd, w, h);
-#     _Update_Part();
-#     delay(GxDEPG0213BN_PU_DELAY);
-#     // update erase buffer
-#     _writeToWindow(xs, ys, xd, yd, w, h);
-#     delay(GxDEPG0213BN_PU_DELAY);
-# }
-#
-#
-#     def update_window(xs, ys, xd, yd, w, h)
-#
-#         if self._rotation != ROTATION_0
-#             return
-#         switch (getRotation()) {
-#         case 1:
-#             swap(xs, ys);
-#             swap(xd, yd);
-#             swap(w, h);
-#             xs = GxDEPG0213BN_WIDTH - xs - w - 1;
-#             xd = GxDEPG0213BN_WIDTH - xd - w - 1;
-#             break;
-#         case 2:
-#             xs = GxDEPG0213BN_WIDTH - xs - w - 1;
-#             ys = GxDEPG0213BN_HEIGHT - ys - h - 1;
-#             xd = GxDEPG0213BN_WIDTH - xd - w - 1;
-#             yd = GxDEPG0213BN_HEIGHT - yd - h - 1;
-#             break;
-#         case 3:
-#             swap(xs, ys);
-#             swap(xd, yd);
-#             swap(w, h);
-#             ys = GxDEPG0213BN_HEIGHT - ys  - h - 1;
-#             yd = GxDEPG0213BN_HEIGHT - yd  - h - 1;
-#             break;
-#         _Init_Part(0x03);
-#         _writeToWindow(xs, ys, xd, yd, w, h);
-#         _Update_Part();
-#         delay(GxDEPG0213BN_PU_DELAY);
-#         // update erase buffer
-#         _writeToWindow(xs, ys, xd, yd, w, h);
-#         delay(GxDEPG0213BN_PU_DELAY);
-
-
-
-    def _update_common(self):
-
-#  this->command(0x12);
-#  this->wait_until_idle_();
-        self._command(b'\x12')
+    def soft_reset(self):
+        self._command(SW_RESET)
         self._wait_until_idle()
 
-#  this->command(0x11);
-#  this->data(0x03);
-        # Set RAM entry mode 3 (x increase, y increase : normal mode)
-        self._command(b'\x11', b'\x03')
+    def deep_sleep(self):
+        self._command(DEEP_SLEEP_MODE)
 
-#  this->command(0x44);
-#  this->data(1);
-#  this->data(this->get_width_internal() / 8);
-#        self._command(b'\x44', b'\x01\x10')
-        self._command(b'\x44', b'\x01\x10')
+    def _update_common(self):
+        self.hard_reset()
+        self.soft_reset()
 
-#  this->command(0x45);
-#  this->data(0);
-#  this->data(0);
-#  this->data(this->get_height_internal());
-#  this->data(0);
-        self._command(b'\x45', b'\x00\x00\xf9\x00'
-                      )
-#  this->command(0x4e);
-#  this->data(1);
-        self._command(b'\x4e', b'\x01')
+        # entry mode 3 (x increase, y increase -- POR)
+        self._command(DATA_ENTRY_MODE_SETTING, b'\x03')
 
-#  this->command(0x4f);
-#  this->data(0);
-#  this->data(0);
-        self._command(b'\x4f', b'\x00\x00')
+        # Start = 0x00, End = 0x0f (15 = 128/8-1)
+        self._command(SET_RAM_X_ADDRESS_START_END_POSITION, b'\x00\x0F')
+
+        # Start = 0x00, End = 0xF9 (250 - 1)
+        self._command(SET_RAM_Y_ADDRESS_START_END_POSITION, b'\x00\x00\xf9\x00')
+
+        # Set the X address counter to 0x00 (POR)
+        self._command(SET_RAM_X_ADDRESS_COUNTER, b'\x00')
+
+        # Set the Y address counter to 0x000 (POR)
+        self._command(SET_RAM_Y_ADDRESS_COUNTER, b'\x00\x00')
+
+        # Set border to 0xff ()
+        # self._command(BORDER_WAVEFORM_CONTROL, b'\xff')
 
     def update(self):
         self._update_common()
 
-#    // send data
-#    this->command(0x24);
-#    this->start_data_();
-#    this->write_array(this->buffer_, this->get_buffer_length_());
-#    this->end_data_();
         self._command(WRITE_RAM, self._get_rotated_buffer())
 
-#    // commit
-#    this->command(0x20);
-#    this->wait_until_idle_();
-        self._command(b'\x20')
+        self._command(MASTER_ACTIVATION)
         self._wait_until_idle()
 
     def update_partial(self):
         self._update_common()
 
-#https://github.com/lewisxhe/GxEPD/blob/master/src/GxDEPG0213BN/GxDEPG0213BN.cpp
+        # https://github.com/lewisxhe/GxEPD/blob/master/src/GxDEPG0213BN/GxDEPG0213BN.cpp
 
+        # set up partial update
+        self._command(WRITE_LUT_REGISTER, PART_UPDATE_LUT_TTGO_DKE)
 
-#     // set up partial update
-#    this->command(0x32);
-#    for (uint8_t v : PART_UPDATE_LUT_TTGO_DKE)
-#      this->data(v);
-        self._command(b'\x32', PART_UPDATE_LUT_TTGO_DKE)
+        # self._command(SET_GATE_TIME, b'\x22')
 
-#    this->command(0x3F);
-#    this->data(0x22);
-        self._command(b'\x3F', b'\x22')
+        self._command(GATE_DRIVING_VOLTAGE_CONTROL, b'\x17')
 
-#    this->command(0x03);
-#    this->data(0x17);
-        self._command(b'\x03', b'\x17')
+        self._command(SOURCE_DRIVING_VOLTAGE_CONTROL, b'\x41\x00\x32')  # POR is b'\x41\xA8\x32'
 
-#    this->command(0x04);
-#    this->data(0x41);
-#    this->data(0x00);
-#    this->data(0x32);
-        self._command(b'\x04', b'\x41\x00\x32')
-
-
-#    this->command(0x2C);
-#    this->data(0x32);
-        self._command(b'\x2C', b'\x32')
-
-#    this->command(0x37);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x40);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x00);
-#    this->data(0x00);
-        self._command(b'\x37', b'\x00\x00\x00\x00\x00\x40\x00\x00\x00\x00')
-
-#    this->command(0x3C);
-#    this->data(0x80);
-        self._command(b'\x3C', b'\x80')
-
-#    this->command(0x22);
-#    this->data(0xC0);
-        self._command(b'\x22', b'\xC0')
-
-#    this->command(0x20);
-#    this->wait_until_idle_();
-
-        self._command(b'\x20')
+        # POR is 0x00
+        # 0x32 is an unlisted value?
+        self._command(WRITE_VCOM_REGISTER, b'\x00')
         self._wait_until_idle()
 
-#        return
+        # POR is 0xFF (clock on, analog on, load temperature, display in mode 2, analog off, osc off)
+        # here use 0x99: enable clock, load lut in mode 2, disable clock
+        self._command(DISPLAY_UPDATE_CONTROL_2, b'\x99')
+        self._command(MASTER_ACTIVATION)
+        self._wait_until_idle()
 
-#    // send data
-#    this->command(0x24);
-#    this->start_data_();
-#    this->write_array(this->buffer_, this->get_buffer_length_());
-#    this->end_data_();
+        # POR is 0xC0 (VBD <- HIZ)
+        # here use 0x0N = (GS transition LUTN)
+        self._command(BORDER_WAVEFORM_CONTROL, b'\x01')
+        self._wait_until_idle()
 
         self._command(WRITE_RAM, self._get_rotated_buffer())
 
-#    // commit as partial
-#    this->command(0x22);
-#    this->data(0xCF);
-        self._command(b'\x22', b'\xCF')
-
-
-#    this->command(0x20);
-#    this->wait_until_idle_();
-        self._command(b'\x20')
+        # commit as partial
+        self._command(DISPLAY_UPDATE_CONTROL_2, b'\xCF')
+        self._command(MASTER_ACTIVATION)
         self._wait_until_idle()
 
-#    // data must be sent again on partial update
-#    delay(300);  // NOLINT
-#    this->command(0x24);
-#    this->start_data_();
-#    this->write_array(this->buffer_, this->get_buffer_length_());
-#    this->end_data_();
-#    delay(300);  // NOLINT
+        # data must be sent again on partial update
+        # self._command(WRITE_RAM)
+        # sleep_ms(300)
+        # self._command(WRITE_RAM, self._get_rotated_buffer())
+        # sleep_ms(300)
+        # self._command(DISPLAY_UPDATE_CONTROL_2, b'\xCF')
+        # self._command(MASTER_ACTIVATION)
+        # self._wait_until_idle()
 
-        self._command(b'\x24')
-        sleep_ms(300)
-        self._command(WRITE_RAM, self._get_rotated_buffer())
-        sleep_ms(300)
-
-#    @micropython.native
     def _get_rotated_buffer(self):
         # no need to rotate
         if self._rotation == ROTATION_0:
