@@ -1,9 +1,7 @@
 from time import ticks_diff, ticks_ms
 
 import ntptime
-import utime
-from machine import (PWRON_RESET, RTC, Pin, Timer, enable_irq, lightsleep,
-                     reset_cause)
+from machine import (RTC, lightsleep)
 from micropython import const
 
 import monaspace_neon_medium
@@ -26,7 +24,7 @@ NTP_SYNC_RETRIES = const(5)
 FULL_REFRESH_AT = (None, None, None, None, None, const(30), None)  # On the half hour
 NTP_SYNC_AT = (None, None, None, None, const(0), const(0), None)  # at 00:00 midnight
 
-TIME_ZONE = -5  # Eastern Standard Time
+UTC_OFFSET = -5  # Eastern Standard Time
 
 
 epd = LandscapeDisplay()
@@ -84,9 +82,15 @@ def dtt_matches(current_time: tuple, match_against: tuple) -> bool:
 def update_display() -> int:
     start_ms = ticks_ms()
 
-    current_time = rtc.datetime()
     move_to_clock_position()
-    textwriter.printstring(f"{' ' if current_time[DTT_HOUR] < 10 else ''}{current_time[DTT_HOUR]}:{current_time[DTT_MINUTE]:02d}")
+
+    current_time = rtc.datetime()
+    twelve_hour_time = current_time[DTT_HOUR] % 12
+    local_twelve = twelve_hour_time + UTC_OFFSET
+    if local_twelve < 0:
+        local_twelve += 12
+
+    textwriter.printstring(f"{' ' if local_twelve < 10 else ''}{local_twelve}:{current_time[DTT_MINUTE]:02d}")
 
     # TODO: print date on the bottom row
 
