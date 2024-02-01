@@ -12,5 +12,6 @@
     ],
     "python.analysis.extraPaths": [
         ".vscode\\Pico-W-Stub"
-    ]
+    ],
+    "python.REPL.enableREPLSmartSend": false
 }
