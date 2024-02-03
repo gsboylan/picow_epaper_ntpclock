@@ -1,7 +1,7 @@
 from time import ticks_diff, ticks_ms
 
 import ntptime
-from machine import (RTC, lightsleep)
+from machine import RTC, Pin, lightsleep
 from micropython import const
 
 import monaspace_neon_medium
@@ -20,7 +20,7 @@ DTT_SECOND = const(6)
 
 NTP_SYNC_RETRIES = const(5)
 
-# these are (hour, minute), None = match all
+# these are (hour, minute), None => match all, value => match multiples of that value
 FULL_REFRESH_AT = (None, None, None, None, None, const(30), None)  # On the half hour
 NTP_SYNC_AT = (None, None, None, None, const(0), const(0), None)  # at 00:00 midnight
 
@@ -49,9 +49,10 @@ def move_to_clock_position():
     vcenter_hcenter_Writer(5)
 
 
-def attempt_ntp_sync() -> None:
+def attempt_ntp_sync() -> bool:
     print(f"Attempting to fetch ntp time... current machine.RTC time is {rtc.datetime()}")
     try:
+        indicator = Pin("LED", Pin.OUT, value=1)
         connect_successful = wifi.tryConnectWlan(wificreds.SSID, wificreds.PASS)
 
         if connect_successful:
@@ -59,6 +60,7 @@ def attempt_ntp_sync() -> None:
             ntptime.timeout = 4  # seconds
             ntptime.settime()
             print(f"New time is {rtc.datetime()}")
+            return True
 
         else:
             print("Failed to connect to network")
@@ -68,14 +70,24 @@ def attempt_ntp_sync() -> None:
         print(e)
 
     finally:
+        indicator.off()
+        del indicator
         wifi.deactivate_wifi()
+
+    return False
 
 
 #  Only param 1 should have None entries, for sanity
 def dtt_matches(current_time: tuple, match_against: tuple) -> bool:
     for i in range(len(match_against)):
-        if match_against[i] is not None and match_against[i] != current_time[i]:
-            return False
+        if match_against[i] is not None:
+            if match_against[i] == 0:
+                if current_time[i] != 0:
+                    return False
+
+            if not current_time[i] % match_against[i] == 0:
+                return False
+
     return True
 
 
@@ -109,19 +121,15 @@ def update_display() -> int:
 
 def run():
     epd.wipe()
-    attempt_ntp_sync()
-    should_retry_ntp = False
+    ntp_succeeded = attempt_ntp_sync()
     while True:
-        delta_ms = update_display()
-
-        if dtt_matches(rtc.datetime(), NTP_SYNC_AT) or should_retry_ntp:
-            ntp_success = attempt_ntp_sync()
-            if ntp_success:
-                should_retry_ntp = False
-            else:
+        if dtt_matches(rtc.datetime(), NTP_SYNC_AT) or not ntp_succeeded:
+            ntp_succeeded = attempt_ntp_sync()
+            if not ntp_succeeded:
                 print("Will retry NTP on next run")
-                should_retry_ntp = True
 
-        ms_to_next_minute = ((60 - rtc.datetime()[DTT_SECOND]) * 1000) - delta_ms
+        update_display()
+        ms_to_next_minute = (60 - rtc.datetime()[DTT_SECOND]) * 1000
         print(f"Sleeping for {ms_to_next_minute} ms")
+        # On the RP2 port of upython, this is the lowest energy mode that keeps the RTC running
         lightsleep(ms_to_next_minute)

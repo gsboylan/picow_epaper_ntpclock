@@ -8,7 +8,7 @@ _NETWORK_STAT_NO_IP = const(2)  # Not in the docs but can happen
 
 class Wifi:
     DEFAULT_NUM_RETRIES = const(5)
-    CONNECT_RETRY_PERIOD_MILLIS = const(1000)
+    RETRY_PERIOD_MILLIS = const(1000)
 
     def __init__(self) -> None:
         self._wifi: network.WLAN = network.WLAN(network.STA_IF)
@@ -38,8 +38,9 @@ class Wifi:
         print(f"Looking for {ssid}...")
         self._wifi.connect(ssid, passw)
 
-        remaining_tries = retries
-        while remaining_tries >= 0:
+        connect_retries = retries
+        dhcp_retries = retries
+        while connect_retries >= 0 and dhcp_retries >= 0:
             if self._wifi.status() in [
                 network.STAT_GOT_IP,
                 network.STAT_CONNECT_FAIL,
@@ -48,12 +49,13 @@ class Wifi:
                 # Success or non-retryable error code
                 break
             elif self._wifi.status() == _NETWORK_STAT_NO_IP:
-                print("Connected but waiting on DHCP, resetting retries...")
-                remaining_tries = retries
+                print(f"Waiting for IP... remaining tries: {dhcp_retries}...")
+                dhcp_retries -= 1
+            else:
+                print(f"Attempting to connect... remaining tries: {connect_retries}... [{self.get_wlan_status()}]")
+                connect_retries -= 1
 
-            print(f"Trying to connect, remaining tries: {remaining_tries}, checking again in {Wifi.CONNECT_RETRY_PERIOD_MILLIS//1000} seconds... [{self.get_wlan_status()}]")
-            sleep_ms(Wifi.CONNECT_RETRY_PERIOD_MILLIS)
-            remaining_tries = remaining_tries - 1
+            sleep_ms(Wifi.RETRY_PERIOD_MILLIS)
 
         if self._wifi.status() == network.STAT_GOT_IP:
             print(f"Connected, ifconfig is [{self._wifi.ifconfig()}] and RSSI is {self._wifi.status('rssi')}")
