@@ -1,4 +1,4 @@
-from time import ticks_diff, ticks_ms
+from time import sleep_ms, ticks_diff, ticks_ms
 
 import ntptime
 from machine import RTC, Pin, lightsleep
@@ -41,12 +41,9 @@ textwriter = Writer(
 textwriter.set_clip(col_clip=True)
 
 
-def vcenter_hcenter_Writer(num_chars: int) -> None:
+def vcenter_hcenter_Writer(string: str) -> None:
+    num_chars = len(string)
     Writer.set_textpos(device=epd, row=(textwriter.screenheight - textwriter.height) // 2, col=(textwriter.screenwidth - textwriter.stringlen("0" * num_chars)) // 2)
-
-
-def move_to_clock_position():
-    vcenter_hcenter_Writer(5)
 
 
 def attempt_ntp_sync() -> bool:
@@ -85,24 +82,32 @@ def dtt_matches(current_time: tuple, match_against: tuple) -> bool:
                 if current_time[i] != 0:
                     return False
 
+            if current_time[i] == 0:
+                return False
+
             if not current_time[i] % match_against[i] == 0:
                 return False
 
     return True
 
 
-def update_display() -> int:
+def update_display(hour_offset: int = 0, minute_offset: int = 0, use_leading_space: bool = True) -> int:
     start_ms = ticks_ms()
 
-    move_to_clock_position()
-
     current_time = rtc.datetime()
-    twelve_hour_time = current_time[DTT_HOUR] % 12
-    local_twelve = twelve_hour_time + UTC_OFFSET
-    if local_twelve < 0:
-        local_twelve += 12
 
-    textwriter.printstring(f"{' ' if local_twelve < 10 else ''}{local_twelve}:{current_time[DTT_MINUTE]:02d}")
+    offset_minutes = current_time[DTT_MINUTE] + minute_offset
+    if offset_minutes >= 60:
+        offset_minutes -= 60
+        hour_offset += 1
+
+    local_twelve = (current_time[DTT_HOUR] + hour_offset) % 12
+    if local_twelve == 0:
+        local_twelve = 12
+
+    display_time = "{leading_space}{hour}:{minute}".format(leading_space=" " if local_twelve < 10 and use_leading_space else "", hour=local_twelve, minute=offset_minutes)
+    vcenter_hcenter_Writer(display_time)
+    textwriter.printstring(display_time)
 
     # TODO: print date on the bottom row
 
@@ -123,13 +128,15 @@ def run():
     epd.wipe()
     ntp_succeeded = attempt_ntp_sync()
     while True:
+        advance_millis = update_display(UTC_OFFSET, 1)
+
         if dtt_matches(rtc.datetime(), NTP_SYNC_AT) or not ntp_succeeded:
             ntp_succeeded = attempt_ntp_sync()
             if not ntp_succeeded:
                 print("Will retry NTP on next run")
 
-        update_display()
-        ms_to_next_minute = (60 - rtc.datetime()[DTT_SECOND]) * 1000
+        # start running before the next minute so that the screen updates closer to exact time
+        ms_to_next_minute = (60 - rtc.datetime()[DTT_SECOND]) * 1000 - advance_millis
         print(f"Sleeping for {ms_to_next_minute} ms")
         # On the RP2 port of upython, this is the lowest energy mode that keeps the RTC running
         lightsleep(ms_to_next_minute)
