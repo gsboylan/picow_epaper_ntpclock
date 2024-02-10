@@ -91,7 +91,7 @@ def dtt_matches(current_time: tuple, match_against: tuple) -> bool:
     return True
 
 
-def update_display(hour_offset: int = 0, minute_offset: int = 0, use_leading_space: bool = True) -> int:
+def update_display(hour_offset: int = 0, minute_offset: int = 0) -> int:
     start_ms = ticks_ms()
 
     current_time = rtc.datetime()
@@ -105,7 +105,7 @@ def update_display(hour_offset: int = 0, minute_offset: int = 0, use_leading_spa
     if local_twelve == 0:
         local_twelve = 12
 
-    display_time = "{leading_space}{hour}:{minute}".format(leading_space=" " if local_twelve < 10 and use_leading_space else "", hour=local_twelve, minute=offset_minutes)
+    display_time = f"{local_twelve:02d}:{offset_minutes:02d}"
     vcenter_hcenter_Writer(display_time)
     textwriter.printstring(display_time)
 
@@ -127,8 +127,10 @@ def update_display(hour_offset: int = 0, minute_offset: int = 0, use_leading_spa
 def run():
     epd.wipe()
     ntp_succeeded = attempt_ntp_sync()
+    first_cycle = True
     while True:
-        advance_millis = update_display(UTC_OFFSET, 1)
+        redraw_time = update_display(UTC_OFFSET, 0 if first_cycle else 1)
+        first_cycle = False
 
         if dtt_matches(rtc.datetime(), NTP_SYNC_AT) or not ntp_succeeded:
             ntp_succeeded = attempt_ntp_sync()
@@ -136,7 +138,10 @@ def run():
                 print("Will retry NTP on next run")
 
         # start running before the next minute so that the screen updates closer to exact time
-        ms_to_next_minute = (60 - rtc.datetime()[DTT_SECOND]) * 1000 - advance_millis
+        ms_to_next_minute = (60 - rtc.datetime()[DTT_SECOND]) * 1000
+        if ms_to_next_minute >= redraw_time:
+            ms_to_next_minute -= redraw_time
         print(f"Sleeping for {ms_to_next_minute} ms")
         # On the RP2 port of upython, this is the lowest energy mode that keeps the RTC running
-        lightsleep(ms_to_next_minute)
+        # lightsleep(ms_to_next_minute)
+        sleep_ms(ms_to_next_minute)
