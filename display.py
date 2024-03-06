@@ -3,17 +3,20 @@ from micropython import const
 
 import DEPG0213BN
 
-SPI_MODULE = const(1)
-CS_PIN = const(9)
-DC_PIN = const(8)
-RST_PIN = const(12)
-BUSY_PIN = const(13)
+SPI_MODULE = const(0)
+RST_PIN = const(21)
+BUSY_PIN = const(20)
+MOSI_PIN = const(19)
+SCK_PIN = const(18)
+CS_PIN = const(17)
+DC_PIN = const(16)
+# MISO_PIN = const(16)
 
 
 class LandscapeDisplay(DEPG0213BN.EPD):
     def __init__(self):
         super().__init__(
-            spi=SPI(SPI_MODULE),
+            spi=SPI(SPI_MODULE, sck=Pin(SCK_PIN), mosi=Pin(MOSI_PIN)),
             cs=Pin(CS_PIN),
             dc=Pin(DC_PIN),
             rst=Pin(RST_PIN),

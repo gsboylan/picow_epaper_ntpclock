@@ -143,5 +143,5 @@ def run():
             ms_to_next_minute -= redraw_time
         print(f"Sleeping for {ms_to_next_minute} ms")
         # On the RP2 port of upython, this is the lowest energy mode that keeps the RTC running
-        # lightsleep(ms_to_next_minute)
-        sleep_ms(ms_to_next_minute)
+        lightsleep(ms_to_next_minute)
+        # sleep_ms(ms_to_next_minute)
